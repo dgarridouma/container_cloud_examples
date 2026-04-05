@@ -1,0 +1,22 @@
+services:
+  iris-api:
+    build: ./api
+    container_name: iris-api
+    networks:
+      - iris-network
+
+  iris-frontend:
+    build: ./frontend
+    container_name: iris-frontend
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://iris-api:8000
+    depends_on:
+      - iris-api
+    networks:
+      - iris-network
+
+networks:
+  iris-network:
+    driver: bridge

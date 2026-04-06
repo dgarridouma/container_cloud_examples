@@ -10,6 +10,7 @@ Ejemplos prácticos de despliegue de contenedores en Azure y GCP. Incluye aplica
 container_cloud_examples/
 ├── iris_streamlit/              # App Streamlit con dataset Iris
 ├── iris_streamlit_fastapi/      # Frontend Streamlit + Backend FastAPI
+├── penguins_streamlit/          # App Streamlit con dataset pingüinos
 ├── terraform_azure_containers/  # Terraform para ACI y ACA en Azure
 └── terraform_gcp_containers/    # Terraform para Cloud Run en GCP
 ```
@@ -69,6 +70,26 @@ docker compose up --build
 ```
 
 El frontend queda disponible en `http://localhost:8501`. La comunicación entre contenedores usa la red interna de Docker: el frontend llama a la API en `http://iris-api:8000`.
+
+---
+
+## penguins_streamlit
+
+App Streamlit interactiva con dataset de pingüinos. Permite explorar las variables del dataset con filtros y gráficos interactivos.
+
+**Stack:** Python · Streamlit · Plotly
+
+**Ejecutar en local:**
+```
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+**Construir imagen:**
+```
+docker build -t penguins-streamlit:v1 .
+docker run -p 8501:8501 penguins-streamlit:v1
+```
 
 ---
 

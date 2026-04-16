@@ -1,0 +1,31 @@
+# Control de versiones
+.git
+.gitignore
+
+# Entornos virtuales Python
+.venv
+venv
+env
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# Archivos de desarrollo local
+.env
+.env.*
+!.env.example
+
+# Herramientas de IDE
+.vscode
+.idea
+*.code-workspace
+
+# Tests y documentación
+tests/
+*.md
+docs/
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db

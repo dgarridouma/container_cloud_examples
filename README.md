@@ -11,6 +11,7 @@ container_cloud_examples/
 ├── iris_streamlit/              # App Streamlit con dataset Iris
 ├── iris_streamlit_fastapi/      # Frontend Streamlit + Backend FastAPI
 ├── penguins_streamlit/          # App Streamlit con dataset pingüinos
+├── sensehat_aca/                # App visualizando datos en CosmosDB
 ├── terraform_azure_containers/  # Terraform para ACI y ACA en Azure
 └── terraform_gcp_containers/    # Terraform para Cloud Run en GCP
 ```
@@ -90,6 +91,12 @@ streamlit run app.py
 docker build -t penguins-streamlit:v1 .
 docker run -p 8501:8501 penguins-streamlit:v1
 ```
+
+## sensehat_aca
+
+Aplicación mostrando datos de CosmosDB usando plantillas Jinja2. Los datos han sido almacenados en actividades previas.
+
+**Stack:** Python · Flask · CosmosDB
 
 ---
 

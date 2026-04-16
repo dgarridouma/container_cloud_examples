@@ -92,11 +92,43 @@ docker build -t penguins-streamlit:v1 .
 docker run -p 8501:8501 penguins-streamlit:v1
 ```
 
+---
+
 ## sensehat_aca
 
-Aplicación mostrando datos de CosmosDB usando plantillas Jinja2. Los datos han sido almacenados en actividades previas.
+Aplicación Flask que visualiza datos de sensores (temperatura, presión y humedad) almacenados en Cosmos DB. Los datos fueron capturados en actividades previas usando el emulador de SenseHat en una Raspberry Pi. Diseñada como ejemplo de contenedorización y despliegue en Azure Container Apps (ACA).
 
-**Stack:** Python · Flask · CosmosDB
+**Stack:** Python · Flask · Gunicorn · Azure Cosmos DB
+
+```
+sensehat_aca/
+├── app.py               # Aplicación Flask
+├── requirements.txt
+├── Dockerfile           # Imagen de producción (usuario no-root, Gunicorn)
+├── .env.example         # Plantilla de variables de entorno
+└── templates/
+    ├── db.html          # Vista Jinja2
+    └── db_jquery.html   # Vista jQuery
+```
+
+**Ejecutar en local:**
+```
+cp .env.example .env     # rellenar con la cadena de conexión real
+docker build -t sensehat-aca:v1 .
+docker run --rm -p 8080:8080 --env-file .env sensehat-aca:v1
+```
+
+**Desplegar en ACA:**  
+Ver `instructions.md` en la carpeta del ejemplo. Incluye las dos opciones de registro (Azure Container Registry y Docker Hub).
+
+**Rutas disponibles:**
+
+| Ruta | Descripción |
+|---|---|
+| `/` | Últimos 10 registros en texto plano |
+| `/list_jinja` | Últimos 100 registros con plantilla Jinja2 |
+| `/list_jquery` | Últimos 100 registros con plantilla jQuery |
+| `/health` | Health-check para ACA |
 
 ---
 
@@ -141,5 +173,3 @@ terraform apply
 ## Notas
 
 - Las imágenes base en algunos ejemplos usan `mcr.microsoft.com/devcontainers/python:3.11` en lugar de `python:3.11-slim` de Docker Hub para evitar problemas de conectividad con el registro de Cloudflare.
-
-

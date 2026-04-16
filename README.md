@@ -119,7 +119,7 @@ docker run --rm -p 8080:8080 --env-file .env sensehat-aca:v1
 ```
 
 **Desplegar en ACA:**  
-Ver `instructions.md` en la carpeta del ejemplo. Incluye las dos opciones de registro (Azure Container Registry y Docker Hub).
+Ver `README.md` en la carpeta del ejemplo. Incluye las dos opciones de registro (Azure Container Registry y Docker Hub).
 
 **Rutas disponibles:**
 

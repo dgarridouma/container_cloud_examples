@@ -11,7 +11,8 @@ container_cloud_examples/
 ├── iris_streamlit/              # App Streamlit con dataset Iris
 ├── iris_streamlit_fastapi/      # Frontend Streamlit + Backend FastAPI
 ├── penguins_streamlit/          # App Streamlit con dataset pingüinos
-├── sensehat_aca/                # App visualizando datos en CosmosDB
+├── sensehat_aca/                # App Flask visualizando datos de CosmosDB en ACA
+├── sensehat_cloudrun/           # App Flask visualizando datos de BigQuery en Cloud Run
 ├── terraform_azure_containers/  # Terraform para ACI y ACA en Azure
 └── terraform_gcp_containers/    # Terraform para Cloud Run en GCP
 ```
@@ -129,6 +130,45 @@ Ver `README.md` en la carpeta del ejemplo. Incluye las dos opciones de registro 
 | `/list_jinja` | Últimos 100 registros con plantilla Jinja2 |
 | `/list_jquery` | Últimos 100 registros con plantilla jQuery |
 | `/health` | Health-check para ACA |
+
+---
+
+## sensehat_cloudrun
+
+Aplicación Flask que visualiza datos de sensores (temperatura, presión y humedad) almacenados en BigQuery. Los datos fueron capturados en actividades previas usando el emulador de SenseHat en una Raspberry Pi. Diseñada como ejemplo de contenedorización y despliegue en Google Cloud Run con autenticación mediante Application Default Credentials (ADC).
+
+**Stack:** Python · Flask · Gunicorn · Google BigQuery
+
+```
+sensehat_cloudrun/
+├── app.py               # Aplicación Flask
+├── requirements.txt
+├── Dockerfile           # Imagen de producción (usuario no-root, Gunicorn)
+├── .env.example         # Plantilla de variables de entorno
+└── templates/
+    ├── db.html          # Vista Jinja2
+    └── db_jquery.html   # Vista jQuery
+```
+
+**Ejecutar en local:**
+```
+cp .env.example .env     # rellenar con proyecto y dataset
+gcloud auth application-default login
+docker build -t sensehat-cloudrun:v1 .
+docker run --rm -p 8080:8080 --env-file .env   -v "%APPDATA%\gcloud\application_default_credentials.json:/tmp/adc.json:ro"   -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/adc.json   sensehat-cloudrun:v1
+```
+
+**Desplegar en Cloud Run:**  
+Ver `README.md` en la carpeta del ejemplo. Incluye las dos opciones de registro (Artifact Registry y Docker Hub).
+
+**Rutas disponibles:**
+
+| Ruta | Descripción |
+|---|---|
+| `/` | Últimos 10 registros en texto plano |
+| `/list_jinja` | Últimos 100 registros con plantilla Jinja2 |
+| `/list_jquery` | Últimos 100 registros con plantilla jQuery |
+| `/health` | Health-check para Cloud Run |
 
 ---
 

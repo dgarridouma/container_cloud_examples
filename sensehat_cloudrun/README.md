@@ -1,19 +1,19 @@
-# Despliegue en Google Cloud Run — Guía paso a paso
+# Deployment on Google Cloud Run — Step-by-step guide
 
-> **Contexto del ejemplo:** aplicación Flask que lee datos de sensores (temperatura, presión, humedad) capturados con el emulador de SenseHat en una Raspberry Pi y almacenados en BigQuery. El objetivo es mostrar cómo contenedorizar la app y desplegarla en Cloud Run.
+> **Example context:** Flask application that reads sensor data (temperature, pressure, humidity) captured with the SenseHat emulator on a Raspberry Pi and stored in BigQuery. The goal is to show how to containerize the app and deploy it to Cloud Run.
 
 ---
 
-## Estructura de ficheros resultante
+## Resulting file structure
 
 ```
 sensehat_cloudrun/
-├── app.py                  # Aplicación Flask
-├── requirements.txt        # Dependencias Python
-├── Dockerfile              # Imagen de producción
-├── .dockerignore           # Excluye ficheros innecesarios de la imagen
-├── .env.example            # Plantilla de variables de entorno (SÍ se sube a Git)
-├── .env                    # Valores reales locales       (NO se sube a Git)
+├── app.py                  # Flask application
+├── requirements.txt        # Python dependencies
+├── Dockerfile              # Production image
+├── .dockerignore           # Excludes unnecessary files from the image
+├── .env.example            # Environment variables template (IS uploaded to Git)
+├── .env                    # Real local values                (NOT uploaded to Git)
 └── templates/
     ├── db.html
     └── db_jquery.html
@@ -21,69 +21,69 @@ sensehat_cloudrun/
 
 ---
 
-## Cómo funciona la autenticación en GCP
+## How authentication works in GCP
 
-Una de las características más importantes de GCP es que las bibliotecas cliente (como `google-cloud-bigquery`) nunca necesitan que les pases credenciales explícitamente en el código. En su lugar usan **Application Default Credentials (ADC)**: un mecanismo que busca automáticamente las credenciales adecuadas según el entorno donde se ejecuta el código.
+One of the most important features of GCP is that client libraries (such as `google-cloud-bigquery`) never need you to pass credentials explicitly in the code. Instead they use **Application Default Credentials (ADC)**: a mechanism that automatically looks for the appropriate credentials depending on the environment where the code runs.
 
-El flujo es el siguiente:
+The flow is as follows:
 
-- **En local:** ADC usa las credenciales de tu usuario de GCP, obtenidas con `gcloud auth application-default login`. Se almacenan en un fichero JSON en tu máquina y la biblioteca las encuentra sola.
-- **En Cloud Run:** ADC usa la **cuenta de servicio** adjunta al servicio. GCP la inyecta automáticamente en el entorno de ejecución del contenedor. No hay ficheros, no hay variables de entorno con claves, no hay nada que gestionar.
+- **Locally:** ADC uses your GCP user credentials, obtained with `gcloud auth application-default login`. They are stored in a JSON file on your machine and the library finds them automatically.
+- **On Cloud Run:** ADC uses the **service account** attached to the service. GCP injects it automatically into the container's execution environment. No files, no environment variables with keys, nothing to manage.
 
-El resultado es que `bigquery.Client()` funciona sin ningún argumento de autenticación en ambos entornos, y **la imagen Docker no contiene ninguna credencial**. Si alguna vez hay que restringir o revocar el acceso, basta con modificar los permisos de la cuenta de servicio en IAM — sin tocar el código ni reconstruir la imagen.
+The result is that `bigquery.Client()` works without any authentication arguments in both environments, and **the Docker image contains no credentials**. If access ever needs to be restricted or revoked, simply modify the service account permissions in IAM — without touching the code or rebuilding the image.
 
 ---
 
-## Buenas prácticas aplicadas
+## Applied best practices
 
-| Práctica | Dónde se aplica | Por qué |
+| Practice | Where it applies | Why |
 |---|---|---|
-| ADC en lugar de claves explícitas | `app.py`, Cloud Run | Nunca hay credenciales en el código ni en la imagen |
-| Parámetros de BD en variables de entorno | `app.py`, Cloud Run | Dataset/tabla/location configurables sin reconstruir |
-| Usuario no-root en el contenedor | `Dockerfile` | Reduce superficie de ataque |
-| Gunicorn en lugar del servidor dev | `Dockerfile` CMD | El servidor de Flask no es apto para producción |
-| Health-check endpoint `/health` | `app.py`, `Dockerfile` | Cloud Run lo usa para saber si el contenedor está listo |
-| `.dockerignore` con `*.json` | Raíz del proyecto | Evita incluir claves de cuenta de servicio en la imagen |
-| Imagen `python:slim` | `Dockerfile` FROM | Menor tamaño = menor superficie de ataque |
+| ADC instead of explicit keys | `app.py`, Cloud Run | No credentials ever in the code or the image |
+| DB parameters in environment variables | `app.py`, Cloud Run | Dataset/table/location configurable without rebuilding |
+| Non-root user in the container | `Dockerfile` | Reduces attack surface |
+| Gunicorn instead of dev server | `Dockerfile` CMD | Flask's server is not suitable for production |
+| Health-check endpoint `/health` | `app.py`, `Dockerfile` | Cloud Run uses it to know if the container is ready |
+| `.dockerignore` with `*.json` | Project root | Prevents service account keys from being included in the image |
+| `python:slim` image | `Dockerfile` FROM | Smaller size = smaller attack surface |
 
 ---
 
-## Prerrequisitos
+## Prerequisites
 
 ```bash
-# Verifica que tienes instalado:
+# Verify you have installed:
 gcloud --version      # Google Cloud CLI
-docker --version      # Docker Desktop o Docker Engine
+docker --version      # Docker Desktop or Docker Engine
 ```
 
 ```bash
-# Login en GCP
+# Login to GCP
 gcloud auth login
-gcloud auth application-default login   # credenciales para desarrollo local
+gcloud auth application-default login   # credentials for local development
 
-# Instala el componente de Cloud Run si no lo tienes
+# Install the Cloud Run component if you don't have it
 gcloud components install beta
 ```
 
 ---
 
-## Paso 1 — Variables (una sola vez)
+## Step 1 — Variables (once only)
 
 ```bash
-# ── Identificadores GCP ────────────────────────────────────────────────────
+# ── GCP identifiers ────────────────────────────────────────────────────────
 PROJECT_ID="tu-proyecto-gcp"
-REGION="europe-west1"               # o la región donde esté tu dataset de BQ
+REGION="europe-west1"               # or the region where your BQ dataset is
 
-# ── Nombre e imagen (común a ambas opciones de registro) ──────────────────
+# ── Image name (common to both registry options) ───────────────────────────
 IMAGE_NAME="sensehat-cloudrun"
 IMAGE_TAG="v1"
 
-# ── Opción A: Artifact Registry ───────────────────────────────────────────
-AR_REPO="cloud-run-repo"            # nombre del repositorio en Artifact Registry
-AR_LOCATION="europe-west1"          # debe coincidir con la región
+# ── Option A: Artifact Registry ───────────────────────────────────────────
+AR_REPO="cloud-run-repo"            # repository name in Artifact Registry
+AR_LOCATION="europe-west1"          # must match the region
 AR_IMAGE="${AR_LOCATION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${IMAGE_NAME}:${IMAGE_TAG}"
 
-# ── Opción B: Docker Hub ──────────────────────────────────────────────────
+# ── Option B: Docker Hub ──────────────────────────────────────────────────
 DOCKERHUB_USER="tu-usuario-dockerhub"
 DH_IMAGE="${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
 
@@ -99,30 +99,30 @@ SERVICE_ACCOUNT="sensehat-cloudrun-sa"
 
 ---
 
-## Paso 2 — Configuración del proyecto
+## Step 2 — Project configuration
 
 ```bash
 gcloud config set project $PROJECT_ID
 
-# Habilitar las APIs necesarias
+# Enable the required APIs
 gcloud services enable \
   run.googleapis.com \
   bigquery.googleapis.com \
-  artifactregistry.googleapis.com   # solo si usas Opción A
+  artifactregistry.googleapis.com   # only if using Option A
 ```
 
 ---
 
-## Paso 3 — Cuenta de servicio para Cloud Run
+## Step 3 — Service account for Cloud Run
 
-> Aquí es donde se concede el acceso a BigQuery a nuestro servicio de Cloud Run. En lugar de gestionar claves o cadenas de conexión, simplemente asignamos los roles necesarios en IAM a la cuenta de servicio que usará el contenedor.
+> This is where BigQuery access is granted to our Cloud Run service. Instead of managing keys or connection strings, we simply assign the necessary IAM roles to the service account that the container will use.
 
 ```bash
-# Crear la cuenta de servicio
+# Create the service account
 gcloud iam service-accounts create $SERVICE_ACCOUNT \
   --display-name "Cloud Run - SenseHat Viewer"
 
-# Conceder permisos de lectura sobre BigQuery
+# Grant read permissions on BigQuery
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member "serviceAccount:${SERVICE_ACCOUNT}@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role "roles/bigquery.dataViewer"
@@ -134,31 +134,31 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 
 ---
 
-## Paso 4 — Build y push de la imagen
+## Step 4 — Build and push the image
 
-### Opción A — Artifact Registry
+### Option A — Artifact Registry
 
 ```bash
-# Crear el repositorio (una sola vez)
+# Create the repository (once only)
 gcloud artifacts repositories create $AR_REPO \
   --repository-format docker \
   --location $AR_LOCATION
 
-# Configurar Docker para autenticarse con Artifact Registry
+# Configure Docker to authenticate with Artifact Registry
 gcloud auth configure-docker ${AR_LOCATION}-docker.pkg.dev
 
-# Build y push
+# Build and push
 docker build -t $AR_IMAGE .
 docker push   $AR_IMAGE
 
-# Alternativa: build en la nube con Cloud Build (sin Docker local) ✅ recomendada en clase
+# Alternative: cloud build with Cloud Build (no local Docker) ✅ recommended in class
 gcloud builds submit --tag $AR_IMAGE .
 ```
 
-### Opción B — Docker Hub
+### Option B — Docker Hub
 
 ```bash
-docker login   # usa Access Token, no tu contraseña
+docker login   # use an Access Token, not your password
                # Docker Hub → Account Settings → Personal access tokens
 
 docker build -t $DH_IMAGE .
@@ -166,9 +166,9 @@ docker push   $DH_IMAGE
 ```
 ---
 
-## Paso 5 — Despliegue en Cloud Run
+## Step 5 — Deploy to Cloud Run
 
-### Opción A — Artifact Registry
+### Option A — Artifact Registry
 
 ```bash
 gcloud run deploy $SERVICE_NAME \
@@ -185,7 +185,7 @@ gcloud run deploy $SERVICE_NAME \
   --port 8080
 ```
 
-### Opción B — Docker Hub
+### Option B — Docker Hub
 
 ```bash
 DOCKERHUB_TOKEN="tu-access-token"
@@ -206,52 +206,52 @@ gcloud run deploy $SERVICE_NAME \
 
 ---
 
-## Paso 6 — Obtener la URL y verificar
+## Step 6 — Get the URL and verify
 
 ```bash
 SERVICE_URL=$(gcloud run services describe $SERVICE_NAME \
   --region $REGION \
   --format "value(status.url)")
 
-echo "URL del servicio: $SERVICE_URL"
+echo "Service URL: $SERVICE_URL"
 
-# Verifica el health-check
+# Verify the health-check
 curl $SERVICE_URL/health
-# Respuesta esperada: {"status": "ok"}
+# Expected response: {"status": "ok"}
 
-# Verifica los datos
+# Verify the data
 curl $SERVICE_URL/
 ```
 
 ---
 
-## Paso 7 — Probar el escalado a cero
+## Step 7 — Test scale-to-zero
 
 ```bash
-# Con --min-instances 0, Cloud Run apaga el contenedor cuando no hay tráfico.
+# With --min-instances 0, Cloud Run shuts down the container when there is no traffic.
 
-# 1. Espera ~5 minutos sin hacer peticiones
-# 2. Comprueba el estado del servicio:
+# 1. Wait ~5 minutes without making any requests
+# 2. Check the service status:
 gcloud run services describe $SERVICE_NAME \
   --region $REGION \
   --format "value(status.conditions)"
 
-# 3. Haz una petición → Cloud Run arranca el contenedor en segundos (cold start)
+# 3. Make a request → Cloud Run starts the container in seconds (cold start)
 curl $SERVICE_URL/
 ```
 
 ---
 
-## Desarrollo local con Docker
+## Local development with Docker
 
 ```bash
-# 1. Asegúrate de tener credenciales locales
+# 1. Make sure you have local credentials
 gcloud auth application-default login
 
-# 2. Copia la plantilla y rellena tus valores
+# 2. Copy the template and fill in your values
 cp .env.example .env
 
-# 3. Arranca el contenedor montando las credenciales ADC de tu máquina
+# 3. Start the container mounting the ADC credentials from your machine
 docker build -t sensehat-cloudrun .
 docker run --rm -p 8080:8080 \
   --env-file .env \
@@ -259,74 +259,74 @@ docker run --rm -p 8080:8080 \
   -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/adc.json \
   sensehat-cloudrun
 
-# Alternativamente, en Windows con CMD sería:
+# Alternatively, on Windows with CMD:
 docker run --rm -p 8080:8080 --env-file .env -v "%APPDATA%\gcloud\application_default_credentials.json:/tmp/adc.json:ro" -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/adc.json sensehat-cloudrun
 
-# Accede en: http://localhost:8080
+# Access at: http://localhost:8080
 ```
 
-> El montaje del fichero ADC es necesario solo en local. En Cloud Run no hace falta porque la cuenta de servicio lo gestiona automáticamente.
+> Mounting the ADC file is only necessary locally. On Cloud Run it is not needed because the service account handles it automatically.
 
 ---
 
-## Actualizar la aplicación
+## Updating the application
 
 ```bash
-# 1. Modifica el código
-# 2. Rebuild con nuevo tag
+# 1. Modify the code
+# 2. Rebuild with a new tag
 IMAGE_TAG="v2"
 
-# Opción A
+# Option A
 AR_IMAGE="${AR_LOCATION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${IMAGE_NAME}:${IMAGE_TAG}"
 gcloud builds submit --tag $AR_IMAGE .
 
-# Opción B
+# Option B
 DH_IMAGE="${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
 docker build -t $DH_IMAGE . && docker push $DH_IMAGE
 
-# 3. Actualiza el servicio (zero-downtime rolling update)
-# Opción A
+# 3. Update the service (zero-downtime rolling update)
+# Option A
 gcloud run services update $SERVICE_NAME --image $AR_IMAGE --region $REGION
 
-# Opción B
+# Option B
 gcloud run services update $SERVICE_NAME --image $DH_IMAGE --region $REGION
 ```
 
 ---
 
-## Limpieza de recursos
+## Resource cleanup
 
 ```bash
-# Eliminar el servicio de Cloud Run
+# Delete the Cloud Run service
 gcloud run services delete $SERVICE_NAME --region $REGION
 
-# Eliminar el repositorio de Artifact Registry (solo Opción A)
+# Delete the Artifact Registry repository (Option A only)
 gcloud artifacts repositories delete $AR_REPO --location $AR_LOCATION
 
-# Eliminar la cuenta de servicio
+# Delete the service account
 gcloud iam service-accounts delete \
   "${SERVICE_ACCOUNT}@${PROJECT_ID}.iam.gserviceaccount.com"
 ```
 
 ---
 
-## Diagrama de arquitectura
+## Architecture diagram
 
 ```
                          ┌──────────────────────────────────────┐
                          │              GCP                     │
                          │                                      │
   Artifact Registry [A]──┤                                      │
-  o Docker Hub       [B]─┤──▶┌──────────────────────┐          │
+  or Docker Hub     [B]─┤──▶┌──────────────────────┐          │
                          │   │  Cloud Run            │          │
                          │   │                       │          │
                          │   │  Flask + Gunicorn     │          │
-                         │   │  puerto 8080          │          │
+                         │   │  port 8080            │          │
                          │   │                       │          │
                          │   │  Service Account      │          │
-                         │   │  (ADC automático)     │          │
+                         │   │  (automatic ADC)      │          │
                          │   └──────────┬────────────┘          │
-                         │              │ ADC / sin claves       │
+                         │              │ ADC / no keys          │
                          │   ┌──────────▼────────────┐          │
                          │   │  BigQuery             │          │
                          │   │  midataset.mitabla    │          │
@@ -335,5 +335,5 @@ gcloud iam service-accounts delete \
                                     ▲
                                     │ HTTPS
                                     │
-                               Usuario / Alumno
+                               User / Student
 ```

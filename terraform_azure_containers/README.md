@@ -1,18 +1,18 @@
-# Terraform con Docker en Azure
+# Terraform with Docker on Azure
 
-## Comunicación entre contenedores
+## Communication between containers
 
-- **ACI**: los contenedores deben estar en el mismo container group para comunicarse por `localhost`. Si se separan, pueden comunicarse exponiendo una IP pública, pero es menos directo y más caro.
-- **ACA**: los contenedores de apps distintas se comunican por la red interna del environment, por lo que no necesitan estar juntos. Es mejor separarlos para que cada servicio tenga su propio ciclo de vida, escalado y configuración independiente (aunque no es obligatorio).
+- **ACI**: containers must be in the same container group to communicate via `localhost`. If separated, they can communicate by exposing a public IP, but it is less straightforward and more expensive.
+- **ACA**: containers from different apps communicate through the environment's internal network, so they do not need to be together. It is better to separate them so that each service has its own lifecycle, scaling and independent configuration (although it is not mandatory).
 
-## Crear Service Principal para Terraform
+## Create a Service Principal for Terraform
 
 ```bash
 az ad sp create-for-rbac --name "terraform-sp" --role Contributor \
   --scopes /subscriptions/<SUBSCRIPTION_ID>
 ```
 
-La salida devuelve las credenciales necesarias para Terraform:
+The output returns the credentials needed for Terraform:
 
 ```json
 {
@@ -23,11 +23,11 @@ La salida devuelve las credenciales necesarias para Terraform:
 }
 ```
 
-> Protege estas credenciales. No las incluyas en el código ni en el control de versiones.
+> Protect these credentials. Do not include them in the code or in version control.
 
-## Ejecutar Terraform dentro de un contenedor Docker
+## Run Terraform inside a Docker container
 
-### Init (no requiere credenciales)
+### Init (no credentials required)
 
 ```bash
 docker run -it --rm -v %cd%:/workspace -w /workspace hashicorp/terraform:latest init
@@ -55,13 +55,13 @@ docker run -it --rm -v %cd%:/workspace -w /workspace \
   hashicorp/terraform:latest destroy
 ```
 
-## Registro del proveedor de Azure Container Apps
+## Azure Container Apps provider registration
 
-Si es la primera vez que se usa ACA en la suscripción, hay que registrar el proveedor:
+If ACA is being used for the first time in the subscription, the provider must be registered:
 
 ```bash
 az provider register --namespace Microsoft.App
 
-# Comprobar estado del registro
+# Check registration status
 az provider show --namespace Microsoft.App --query registrationState
 ```

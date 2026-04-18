@@ -1,48 +1,48 @@
-# Terraform con Docker en GCP (Cloud Run)
+# Terraform with Docker on GCP (Cloud Run)
 
 ## Variables
 
-Sustituye `<PROJECT_ID>` por el ID de tu proyecto GCP en todos los comandos.
+Replace `<PROJECT_ID>` with your GCP project ID in all commands.
 
-## Crear Service Account para Terraform
+## Create a Service Account for Terraform
 
 ```bash
-# Crea la service account que usará Terraform para autenticarse
+# Create the service account that Terraform will use to authenticate
 gcloud iam service-accounts create terraform-sa --display-name "Terraform"
 
-# Asigna el rol Editor para que pueda crear y gestionar recursos
+# Assign the Editor role so it can create and manage resources
 gcloud projects add-iam-policy-binding <PROJECT_ID> \
   --member="serviceAccount:terraform-sa@<PROJECT_ID>.iam.gserviceaccount.com" \
   --role="roles/editor"
 
-# Asigna el rol de administrador de seguridad IAM para poder gestionar permisos
-# (necesario para hacer el servicio Cloud Run accesible públicamente)
+# Assign the IAM Security Admin role to be able to manage permissions
+# (required to make the Cloud Run service publicly accessible)
 gcloud projects add-iam-policy-binding <PROJECT_ID> \
   --member="serviceAccount:terraform-sa@<PROJECT_ID>.iam.gserviceaccount.com" \
   --role="roles/iam.securityAdmin"
 
-# Descarga las credenciales de la service account en un fichero JSON
-# Este fichero se pasará al contenedor de Terraform
+# Download the service account credentials to a JSON file
+# This file will be passed to the Terraform container
 gcloud iam service-accounts keys create credentials.json \
   --iam-account=terraform-sa@<PROJECT_ID>.iam.gserviceaccount.com
 ```
 
-> Protege `credentials.json`. No lo incluyas en el control de versiones (añádelo al `.gitignore`).
+> Protect `credentials.json`. Do not include it in version control (add it to `.gitignore`).
 
-## Habilitar APIs necesarias
+## Enable required APIs
 
-Terraform necesita la API de Cloud Resource Manager para gestionar permisos IAM en GCP.
-Si no está habilitada, el `apply` fallará con un error 403.
+Terraform needs the Cloud Resource Manager API to manage IAM permissions in GCP.
+If it is not enabled, `apply` will fail with a 403 error.
 
 ```bash
 gcloud services enable cloudresourcemanager.googleapis.com --project=<PROJECT_ID>
 ```
 
-## Ejecutar Terraform dentro de un contenedor Docker
+## Run Terraform inside a Docker container
 
-El fichero `credentials.json` debe estar en la misma carpeta que el `main.tf`.
+The `credentials.json` file must be in the same folder as `main.tf`.
 
-### Init (no requiere credenciales)
+### Init (no credentials required)
 
 ```bash
 docker run -it --rm -v %cd%:/workspace -w /workspace hashicorp/terraform:latest init

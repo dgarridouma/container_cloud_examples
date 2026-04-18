@@ -1,19 +1,19 @@
-# Despliegue en Azure Container Apps — Guía paso a paso
+# Deployment on Azure Container Apps — Step-by-step guide
 
-> **Contexto del ejemplo:** aplicación Flask que lee datos de Cosmos DB y los visualiza. El objetivo es mostrar a los alumnos cómo contenedorizar una app existente y desplegarla en ACA siguiendo buenas prácticas.
+> **Example context:** Flask application that reads data from Cosmos DB and visualizes it. The goal is to show students how to containerize an existing app and deploy it to ACA following best practices.
 
 ---
 
-## Estructura de ficheros resultante
+## Resulting file structure
 
 ```
 sensehat_aca/
-├── app.py                  # Aplicación Flask refactorizada
-├── requirements.txt        # Dependencias Python
-├── Dockerfile              # Imagen de producción
-├── .dockerignore           # Excluye ficheros innecesarios de la imagen
-├── .env.example            # Plantilla de variables de entorno (SÍ se sube a Git)
-├── .env                    # Valores reales locales       (NO se sube a Git)
+├── app.py                  # Refactored Flask application
+├── requirements.txt        # Python dependencies
+├── Dockerfile              # Production image
+├── .dockerignore           # Excludes unnecessary files from the image
+├── .env.example            # Environment variables template (IS uploaded to Git)
+├── .env                    # Real local values                (NOT uploaded to Git)
 └── templates/
     ├── db.html
     └── db_jquery.html
@@ -21,61 +21,61 @@ sensehat_aca/
 
 ---
 
-## Buenas prácticas aplicadas
+## Applied best practices
 
-| Práctica | Dónde se aplica | Por qué |
+| Practice | Where it applies | Why |
 |---|---|---|
-| Secretos en variables de entorno | `app.py`, ACA secrets | La cadena de conexión nunca va en el código |
-| Usuario no-root en el contenedor | `Dockerfile` | Reduce superficie de ataque |
-| Gunicorn en lugar del servidor dev | `Dockerfile` CMD | El servidor de Flask no es apto para producción |
-| Health-check endpoint `/health` | `app.py`, `Dockerfile` | ACA necesita saber si el contenedor está listo |
-| `.dockerignore` | Raíz del proyecto | Imágenes más pequeñas y sin fugas de `.env` |
-| Imagen `python:slim` | `Dockerfile` FROM | Menor tamaño = menor superficie de ataque |
+| Secrets in environment variables | `app.py`, ACA secrets | The connection string never goes in the code |
+| Non-root user in the container | `Dockerfile` | Reduces attack surface |
+| Gunicorn instead of dev server | `Dockerfile` CMD | Flask's server is not suitable for production |
+| Health-check endpoint `/health` | `app.py`, `Dockerfile` | ACA needs to know if the container is ready |
+| `.dockerignore` | Project root | Smaller images and no `.env` leaks |
+| `python:slim` image | `Dockerfile` FROM | Smaller size = smaller attack surface |
 
 ---
 
-## Prerrequisitos
+## Prerequisites
 
 ```bash
-# Verifica que tienes instalado:
+# Verify you have installed:
 az --version          # Azure CLI ≥ 2.57
-docker --version      # Docker Desktop o Docker Engine
+docker --version      # Docker Desktop or Docker Engine
 ```
 
 ```bash
-# Login en Azure
+# Login to Azure
 az login
 
-# Instala la extensión de Container Apps si no la tienes
+# Install the Container Apps extension if you don't have it
 az extension add --name containerapp --upgrade
 ```
 
 ---
 
-## Paso 1 — Variables de entorno (una sola vez)
+## Step 1 — Environment variables (once only)
 
-Ajusta estos valores antes de ejecutar los comandos siguientes:
+Adjust these values before running the following commands:
 
 ```bash
-# ── Identificadores Azure ──────────────────────────────────────────────────
+# ── Azure identifiers ──────────────────────────────────────────────────────
 RESOURCE_GROUP="rg-cosmos-viewer"
 LOCATION="westeurope"
 
-# ── Nombre e imagen (común a ambas opciones) ───────────────────────────────
+# ── Image name (common to both options) ───────────────────────────────────
 IMAGE_NAME="cosmos-viewer"
 IMAGE_TAG="v1"
 
-# ── Opción A: Azure Container Registry ────────────────────────────────────
-ACR_NAME="acrcosmosviewer"                 # único en Azure, solo letras/números
+# ── Option A: Azure Container Registry ────────────────────────────────────
+ACR_NAME="acrcosmosviewer"                 # unique in Azure, letters/numbers only
 
-# ── Opción B: Docker Hub ───────────────────────────────────────────────────
+# ── Option B: Docker Hub ───────────────────────────────────────────────────
 DOCKERHUB_USER="tu-usuario-dockerhub"
 
 # ── Azure Container Apps ───────────────────────────────────────────────────
 ACA_ENV="aca-env-demo"
 ACA_APP="cosmos-viewer-app"
 
-# ── Cosmos DB (copia el valor del Portal > tu cuenta > Keys) ───────────────
+# ── Cosmos DB (copy the value from Portal > your account > Keys) ───────────
 COSMOS_CONN_STRING="AccountEndpoint=https://...;AccountKey=...;"
 COSMOS_DATABASE="mibd"
 COSMOS_CONTAINER="micontenedor"
@@ -83,22 +83,22 @@ COSMOS_CONTAINER="micontenedor"
 
 ---
 
-## Paso 2 — Infraestructura base
+## Step 2 — Base infrastructure
 
 ```bash
-# Grupo de recursos
+# Resource group
 az group create \
   --name $RESOURCE_GROUP \
   --location $LOCATION
 
-# Entorno de Container Apps (red compartida para todos los contenedores del ejemplo)
+# Container Apps environment (shared network for all containers in the example)
 az containerapp env create \
   --name $ACA_ENV \
   --resource-group $RESOURCE_GROUP \
   --location $LOCATION
 ```
 
-> **Solo si usas la Opción A (ACR):** crea también el registro:
+> **Only if you use Option A (ACR):** also create the registry:
 > ```bash
 > az acr create \
 >   --resource-group $RESOURCE_GROUP \
@@ -109,27 +109,27 @@ az containerapp env create \
 
 ---
 
-## Paso 3 — Build y push de la imagen
+## Step 3 — Build and push the image
 
-### Opción A — Azure Container Registry
+### Option A — Azure Container Registry
 
 ```bash
-# Build en la nube (no necesitas Docker instalado). No funciona en todas las suscripciones.
+# Cloud build (Docker not required locally). Does not work on all subscriptions.
 az acr build \
   --registry $ACR_NAME \
   --image ${IMAGE_NAME}:${IMAGE_TAG} \
   .
 
-# Alternativa: build en local + push
+# Alternative: local build + push
 az acr login --name $ACR_NAME
 docker build -t ${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG} .
 docker push   ${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG}
 ```
 
-### Opción B — Docker Hub
+### Option B — Docker Hub
 
 ```bash
-docker login   # usa Access Token, no tu contraseña (ver Paso 4a)
+docker login   # use an Access Token, not your password (see Step 4a)
 
 docker build -t ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG} .
 docker push   ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}
@@ -137,28 +137,28 @@ docker push   ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}
 
 ---
 
-## Paso 4 — Despliegue en Azure Container Apps
+## Step 4 — Deploy to Azure Container Apps
 
-### 4a — Credenciales del registro
+### 4a — Registry credentials
 
-**Opción A — ACR:**
+**Option A — ACR:**
 ```bash
 ACR_SERVER=$(az acr show --name $ACR_NAME --query loginServer -o tsv)
 ACR_USER=$(az acr credential show --name $ACR_NAME --query username -o tsv)
 ACR_PASS=$(az acr credential show --name $ACR_NAME --query "passwords[0].value" -o tsv)
 ```
 
-**Opción B — Docker Hub:**  
-Genera un **Access Token** (nunca uses tu contraseña directamente):  
+**Option B — Docker Hub:**  
+Generate an **Access Token** (never use your password directly):  
 Docker Hub → Account Settings → Personal access tokens → Generate new token
 
 ```bash
 DOCKERHUB_TOKEN="tu-access-token"
 ```
 
-### 4b — Crear la Container App
+### 4b — Create the Container App
 
-**Opción A — ACR:**
+**Option A — ACR:**
 ```bash
 az containerapp create \
   --name $ACA_APP \
@@ -181,7 +181,7 @@ az containerapp create \
       COSMOS_CONTAINER=$COSMOS_CONTAINER
 ```
 
-**Opción B — Docker Hub:**
+**Option B — Docker Hub:**
 ```bash
 az containerapp create \
   --name $ACA_APP \
@@ -204,15 +204,15 @@ az containerapp create \
       COSMOS_CONTAINER=$COSMOS_CONTAINER
 ```
 
-> **Punto clave**  
-> La cadena de conexión (`$COSMOS_CONN_STRING`) se registra como **secret** en ACA y se referencia con `secretref:`. Esto significa que:
-> - No aparece en los logs ni en la configuración visible.
-> - Se puede rotar sin reconstruir la imagen.
-> - La imagen Docker no contiene ningún secreto.
+> **Key point**  
+> The connection string (`$COSMOS_CONN_STRING`) is registered as a **secret** in ACA and referenced with `secretref:`. This means:
+> - It does not appear in logs or visible configuration.
+> - It can be rotated without rebuilding the image.
+> - The Docker image contains no secrets.
 
 ---
 
-## Paso 5 — Obtener la URL y verificar
+## Step 5 — Get the URL and verify
 
 ```bash
 APP_URL=$(az containerapp show \
@@ -220,61 +220,61 @@ APP_URL=$(az containerapp show \
   --resource-group $RESOURCE_GROUP \
   --query "properties.configuration.ingress.fqdn" -o tsv)
 
-echo "URL de la app: https://$APP_URL"
+echo "App URL: https://$APP_URL"
 
-# Verifica el health-check
+# Verify the health-check
 curl https://$APP_URL/health
-# Respuesta esperada: {"status": "ok"}
+# Expected response: {"status": "ok"}
 
-# Verifica los datos
+# Verify the data
 curl https://$APP_URL/
 ```
 
 ---
 
-## Paso 6 — Probar el escalado a cero (característica clave de ACA)
+## Step 6 — Test scale-to-zero (key ACA feature)
 
 ```bash
-# Con --min-replicas 0, ACA apaga el contenedor cuando no hay tráfico.
-# Para comprobarlo en clase:
+# With --min-replicas 0, ACA shuts down the container when there is no traffic.
+# To verify this in class:
 
-# 1. Espera ~5 minutos sin hacer peticiones
-# 2. Comprueba réplicas activas:
+# 1. Wait ~5 minutes without making any requests
+# 2. Check active replicas:
 az containerapp show \
   --name $ACA_APP \
   --resource-group $RESOURCE_GROUP \
   --query "properties.template.scale" -o table
 
-# 3. Haz una petición → ACA arranca el contenedor en segundos (cold start)
+# 3. Make a request → ACA starts the container in seconds (cold start)
 curl https://$APP_URL/
 ```
 
 ---
 
-## Actualizar la aplicación (flujo de CI/CD simplificado)
+## Updating the application (simplified CI/CD flow)
 
 ```bash
-# 1. Modifica el código
-# 2. Rebuild con nuevo tag
+# 1. Modify the code
+# 2. Rebuild with a new tag
 
 IMAGE_TAG="v2"
 
-# Opción A — ACR
+# Option A — ACR
 az acr build --registry $ACR_NAME --image ${IMAGE_NAME}:${IMAGE_TAG} .
 
-# Opción B — Docker Hub
+# Option B — Docker Hub
 docker build -t ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG} .
 docker push   ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}
 
-# 3. Actualiza la Container App (zero-downtime rolling update)
+# 3. Update the Container App (zero-downtime rolling update)
 
-# Opción A
+# Option A
 az containerapp update \
   --name $ACA_APP \
   --resource-group $RESOURCE_GROUP \
   --image ${ACR_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}
 
-# Opción B
+# Option B
 az containerapp update \
   --name $ACA_APP \
   --resource-group $RESOURCE_GROUP \
@@ -283,32 +283,32 @@ az containerapp update \
 
 ---
 
-## Desarrollo local con Docker
+## Local development with Docker
 
 ```bash
-# Copia la plantilla y rellena tus valores reales
+# Copy the template and fill in your real values
 cp .env.example .env
-# Edita .env con tu cadena de conexión real
+# Edit .env with your real connection string
 
-# Arranca el contenedor localmente
+# Start the container locally
 docker build -t cosmos-viewer .
 docker run --rm -p 8080:8080 --env-file .env cosmos-viewer
 
-# Accede en: http://localhost:8080
+# Access at: http://localhost:8080
 ```
 
 ---
 
-## Limpieza de recursos
+## Resource cleanup
 
 ```bash
-# Elimina TODO el grupo de recursos (ACR si la usaste + ACA + entorno)
+# Delete the ENTIRE resource group (ACR if used + ACA + environment)
 az group delete --name $RESOURCE_GROUP --yes --no-wait
 ```
 
 ---
 
-## Diagrama de arquitectura
+## Architecture diagram
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -319,7 +319,7 @@ az group delete --name $RESOURCE_GROUP --yes --no-wait
 │  │  Registry (ACR)  [A]│──┐ │  Apps (ACA)        │   │
 │  └─────────────────────┘  ├▶│                    │   │
 │                            │ │  Flask + Gunicorn  │   │
-│  Docker Hub            [B]─┘ │  puerto 8080       │   │
+│  Docker Hub            [B]─┘ │  port 8080         │   │
 │  usuario/cosmos-viewer   │   │                    │   │
 │                              │  secrets:          │   │
 │                              │  COSMOS_CONN_STR   │   │
@@ -331,7 +331,7 @@ az group delete --name $RESOURCE_GROUP --yes --no-wait
 │                              └────────────────────┘   │
 └──────────────────────────────────────────────────────┘
           ▲
-          │ HTTPS (ingress externo)
+          │ HTTPS (external ingress)
           │
-       Usuario / Alumno
+       User / Student
 ```
